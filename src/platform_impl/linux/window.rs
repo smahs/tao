@@ -440,6 +440,8 @@ impl Window {
     }
   }
 
+  /// Always-on-top stacking is not implemented on Linux (both X11 and Wayland)
+  /// uniformly; always reported as not-always-on-top.
   pub fn is_always_on_top(&self) -> bool {
     false
   }
@@ -519,8 +521,10 @@ impl Window {
     }
   }
 
+  /// Not implemented on Linux (no-op, kept for API parity).
   pub fn set_always_on_bottom(&self, _always_on_bottom: bool) {}
 
+  /// Not implemented on Linux (no-op, kept for API parity).
   pub fn set_always_on_top(&self, _always_on_top: bool) {}
 
   pub fn set_window_icon(&self, _window_icon: Option<Icon>) {}
