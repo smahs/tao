@@ -1,11 +1,10 @@
 #[cfg(feature = "dbus")]
 use dbus::{
   arg::Variant,
-  blocking::{Connection, SyncConnection},
+  blocking::Connection,
   message::MatchRule,
   Error,
 };
-use gtk::glib::{ControlFlow, MainContext, Priority, Sender};
 use log::warn;
 use std::{thread, time::Duration};
 
@@ -31,11 +30,14 @@ pub fn theme() -> Result<Theme, Error> {
   Ok(color_scheme_to_theme(result.0 .0 .0))
 }
 
-pub fn receive_theme_changed(window_tx: Sender<(WindowId, WindowRequest)>) -> Result<(), Error> {
-  let conn = SyncConnection::new_session()?;
+pub fn receive_theme_changed(
+  window_tx: async_channel::Sender<(WindowId, WindowRequest)>,
+) -> Result<(), Error> {
+  let conn = Connection::new_session()?;
   let match_rule = MatchRule::new_signal("org.freedesktop.portal.Settings", "SettingChanged");
-  let (tx, rx) = MainContext::channel(Priority::DEFAULT);
 
+  // Runs on the dedicated D-Bus processing thread below, so we can send
+  // directly to the async window-request channel.
   conn.add_match(match_rule, move |_: (), _, msg| {
     let mut iter = msg.iter_init();
     if let (Ok("org.freedesktop.appearance"), Ok("color-scheme"), Ok(value)) = (
@@ -43,21 +45,15 @@ pub fn receive_theme_changed(window_tx: Sender<(WindowId, WindowRequest)>) -> Re
       iter.read::<&str>(),         // Key
       iter.read::<Variant<u32>>(), // Value
     ) {
-      if let Err(e) = tx.send(color_scheme_to_theme(value.0)) {
-        warn!("Failed to send theme change via channel: {}", e);
+      if let Err(e) = window_tx.send_blocking((
+        WindowId::dummy(),
+        WindowRequest::SetTheme(Some(color_scheme_to_theme(value.0))),
+      )) {
+        warn!("Failed to send theme change request: {}", e);
       }
     }
     true
   })?;
-
-  rx.attach(None, move |theme| {
-    if let Err(e) = window_tx.send((WindowId::dummy(), WindowRequest::SetTheme(Some(theme)))) {
-      warn!("Failed to send theme change request: {}", e);
-      ControlFlow::Break
-    } else {
-      ControlFlow::Continue
-    }
-  });
 
   thread::spawn(move || loop {
     if let Err(e) = conn.process(Duration::from_secs(5)) {

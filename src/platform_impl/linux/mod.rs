@@ -14,6 +14,7 @@ mod portal;
 mod util;
 mod window;
 
+pub mod gtk_window;
 pub mod taskbar;
 #[cfg(feature = "x11")]
 pub mod x11;
